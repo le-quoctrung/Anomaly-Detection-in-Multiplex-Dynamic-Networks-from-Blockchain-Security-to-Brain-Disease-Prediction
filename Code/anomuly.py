@@ -72,7 +72,59 @@ class ANOMULY(nn.Module):
         
         return x.squeeze(), hiddens
 
+class SingleANOMULY(nn.Module):
+    def __init__(self, num_features, hidden_dims, gru_hidden_dims, n_layers=2) -> None:
+        super(SingleANOMULY, self).__init__()  
 
+        self.n_layers = n_layers
+        self.hidden_dims = hidden_dims
+        self.gru_hidden_dims = gru_hidden_dims
+        self.num_features = num_features
+        self.graph_gcn_layers = []
+        self.graph_gru_layers = []
+        self.batch_norm = []
+
+        for layer in range(self.n_layers):     
+            if layer == 0:
+                self.graph_gcn_layers.append(GCNConv(self.num_features, hidden_dims[layer]))
+            
+            else:
+                self.graph_gcn_layers[layer].append(GCNConv(gru_hidden_dims[layer - 1], hidden_dims[layer]))
+            
+            
+            self.graph_gru_layers.append(nn.GRU(input_size=hidden_dims[layer], hidden_size=self.gru_hidden_dims[layer]))
+            self.batch_norm.append(BatchNorm(hidden_dims[layer]))
+            
+
+        self.act = F.relu()
+
+        self.reset_parameters()      
+                
+    def forward(self, data, hiddens=None):
+        x = data.x
+        edge_index = data.edge_index
+    
+        if hiddens is None:
+            hiddens = self.init_hidden(self.hidden_dim)
+        
+        for layer in range(self.n_layers):
+            x = self.graph_gcn_layers[layer](x, edge_index)
+            x = self.batch_norm[layer](x)
+            x = self.act(x)
+            x = F.dropout(x, training=self.training)
+        
+            x, hiddens[layer] = self.graph_gru_layers[layer](x, hiddens[layer])
+        
+
+        x = torch.sigmoid(x)
+        
+        return x.squeeze(), hiddens
+
+        
+        
+    
+    def init_hidden(self, dim):
+        return torch.zeros((self.n_layers, dim)).to(device
 
 class MultiplexAttention(nn.Module):
     def __init__(self, n_views, in_channels, out_channels) -> None:
