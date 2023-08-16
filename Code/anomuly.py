@@ -8,7 +8,42 @@ import torch
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+class MultiplexAttention(nn.Module):
+    def __init__(self, n_views, in_channels, out_channels) -> None:
+        super(MultiplexAttention, self).__init__()
 
+        self.n_views = n_views
+        self.linear = [nn.Linear(in_channels, out_channels) for _ in range(n_views)]
+        self.activation = nn.Tanh()
+
+
+    def forward(self, x):
+        # input size: views * batch_size * #nodes * in_channels
+        out = torch.zeros_like(x)
+        for view in range(self.n_views):
+            out[view] = self.linear[view](x[view])
+        
+        
+        s   = x.mean(dim=2) 
+        s   = torch.unsqueeze(s, 2)
+
+        out = torch.transpose(out, dim0=2, dim1=3) 
+
+        out = torch.matmul(s, out)
+        out = torch.squeeze(out, 2)
+        out = self.activation(out)
+        
+        out = F.softmax(out, dim=0) 
+
+        out = torch.transpose(out, dim0=0, dim1=1)
+        out = torch.transpose(out, dim0=1, dim1=2)
+        out = torch.unsqueeze(out, 2)
+        x   = torch.transpose(x, dim0=0, dim1=1)
+        x   = torch.transpose(x, dim0=1, dim1=2)
+        out = torch.matmul(out, x)
+        out = torch.squeeze(out, 2) # Size: batch_size * #nodes * in_channels
+
+        return out
 
 class ANOMULY(nn.Module):
     def __init__(self, n_views, num_features, hidden_dims, gru_hidden_dims, attns_in_channels, attns_out_channels, n_layers=2) -> None:
@@ -126,39 +161,5 @@ class SingleANOMULY(nn.Module):
     def init_hidden(self, dim):
         return torch.zeros((self.n_layers, dim)).to(device
 
-class MultiplexAttention(nn.Module):
-    def __init__(self, n_views, in_channels, out_channels) -> None:
-        super(MultiplexAttention, self).__init__()
-
-        self.n_views = n_views
-        self.linear = [nn.Linear(in_channels, out_channels) for _ in range(n_views)]
-        self.activation = nn.Tanh()
 
 
-    def forward(self, x):
-        # input size: views * batch_size * #nodes * in_channels
-        out = torch.zeros_like(x)
-        for view in range(self.n_views):
-            out[view] = self.linear[view](x[view])
-        
-        
-        s   = x.mean(dim=2) 
-        s   = torch.unsqueeze(s, 2)
-
-        out = torch.transpose(out, dim0=2, dim1=3) 
-
-        out = torch.matmul(s, out)
-        out = torch.squeeze(out, 2)
-        out = self.activation(out)
-        
-        out = F.softmax(out, dim=0) 
-
-        out = torch.transpose(out, dim0=0, dim1=1)
-        out = torch.transpose(out, dim0=1, dim1=2)
-        out = torch.unsqueeze(out, 2)
-        x   = torch.transpose(x, dim0=0, dim1=1)
-        x   = torch.transpose(x, dim0=1, dim1=2)
-        out = torch.matmul(out, x)
-        out = torch.squeeze(out, 2) # Size: batch_size * #nodes * in_channels
-
-        return out
